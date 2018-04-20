@@ -1,0 +1,6 @@
+name = Abc Facet
+description = A Facet API widget that displays categoties.
+dependencies[] = facetapi
+package = Custom
+core = 7.x
+files[] = plugins/facetapi/widget_slider.inc

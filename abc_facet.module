@@ -1,0 +1,163 @@
+<?php
+
+/**
+ * @file
+ * A Facet API widget that displays a slider to control ranges.
+ */
+
+/**
+ * Implements hook_facetapi_widgets().
+ */
+function abc_facet_facetapi_widgets() {
+  return array(
+    'abc_facet' => array(
+      'handler' => array(
+        'label' => t('Abc Category'),
+        'class' => 'FacetapiWidgetAbcCategory',
+        'query types' => array('term'),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function abc_facet_theme() {
+  return array(
+    'abc_facet' => array(
+      'variables' => array(
+        'tree' => NULL,
+        'attributes' => NULL,
+      ),
+    ),
+    'abc_facet_group' => array(
+      'variables' => array(
+        'tree' => NULL,
+        'attributes' => NULL,
+      ),
+    ),
+    'abc_facet_item' => array(
+      'variables' => array(
+        'tree' => NULL,
+        'attributes' => NULL,
+      ),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function theme_abc_facet_item($variables) {
+  $output = '';
+
+  $url = url($variables['tree']['#path'], array('absolute' => TRUE, 'query' => $variables['tree']['#query']));
+
+  drupal_add_js(
+    array(
+    'facetapi' => array(
+      'tfacets' => array('#tfacets-' . $variables['tree']['#indexed_value']),
+    ),
+    ), array('type' => 'setting')
+  );
+  $output .= l($variables['tree']['#markup'], $variables['tree']['#path'], array(
+    'absolute' => TRUE,
+    'query' => $variables['tree']['#query'],
+    'attributes' => array('class' => array(($variables['tree']['#active'] ? 'facetapi-active' : 'facetapi-inactive')), 'id' => 'tfacets-' . $variables['tree']['#indexed_value'], 'rel' => 'nofollow')
+  ));
+
+  return $output;
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function theme_abc_facet_group($variables) {
+  $output = '';
+
+  $output .= '<h3>' . l($variables['tree']['#markup'], 'taxonomy/term/' . $variables['tree']['#indexed_value']) . '</h3>';
+  // hide the group if selected the 1st level of terms
+  if (
+    empty($variables['current_term']) || empty(taxonomy_get_parents($variables['current_term']->tid))
+  ) {
+    return $output;
+  }
+
+  // Build term category group
+  foreach ($variables['tree']['#item_children'] as $key => $value) {
+    $term = taxonomy_term_load($key);
+    try {
+      $wrapper = entity_metadata_wrapper('taxonomy_term', $term);
+      $type = $wrapper->field_category_type->label();
+      $term_group[$type][$key] = $value;
+    } catch (Exception $exc) {
+      //do nothing
+    }
+  }
+
+  // Output term category group
+  foreach ($term_group as $type => $value) {
+    $output .= '<div class="group-type-wrapper">';
+    $output .= '<h4>' . $type . '</h4>';
+    $output .= '<ul>';
+    foreach ($value as $term) {
+      $class = 'facet-item' . ($term['#active'] ? ' active' : '');
+      $term['#text'] = $term['#markup'];
+      $term['#options']['#attributes'] = array();
+
+      // Initializes links attributes, adds rel="nofollow" if configured.
+      $attributes = array('rel' => 'nofollow');
+      $attributes += array('class' => 'facetapi-checkbox');
+      $variables = array(
+        'text' => $term['#markup'],
+        'path' => $term['#path'],
+        'count' => $term['#count'],
+        'options' => array(
+          'attributes' => $attributes,
+          'html' => $term['#html'],
+          'query' => $term['#query'],
+        ),
+      );
+      // Adds the facetapi-zero-results class to items that have no results.
+      if (!$term['#count']) {
+        $variables['options']['attributes']['class'][] = 'facetapi-zero-results';
+      }
+      // Add an ID to identify this link.
+      $variables['options']['attributes']['id'] = drupal_html_id('facetapi-link-' . $term['#indexed_value']);
+      $output .= '<li class="' . $class . '">' . theme('abc_facet_item', array('tree' => $term)) . '</li>';
+    }
+    $output .= '</ul>';
+    $output .= '</div>';
+  }
+  return $output;
+}
+
+/**
+ * Implementation of hook_theme().
+ */
+function theme_abc_facet($variables) {
+  $output = '';
+  $output .= '<div ' . drupal_attributes($variables['attributes']) . '>';
+  $current_term = menu_get_object('taxonomy_term', 2);
+  foreach ($variables['tree'] as $term_id => $term) {
+    // Hide all facets based on terms that aren't belong to the current term.
+    // Do it only on the first taxonomy level.
+    if (is_object($current_term) && $current_term->tid != $term_id && !taxonomy_get_parents($current_term->tid)) {
+      continue;
+    }
+
+    $class = 'abc-facet-block' . ($term['#active'] ? ' facetapi-active' : '');
+    if (!empty($term['#item_children'])) {
+      $output .= '
+      <div class="' . $class . '" data-id="' . $term_id . '">
+      <h2>' . $term['#markup'] . '</h2>';
+      foreach ($term['#item_children'] as $value) {
+        $output .= theme('abc_facet_group', array('tree' => $value, 'current_term' => $current_term));
+      }
+      $output .= '</div>';
+    }
+  }
+  $output .= '</div>';
+  return $output;
+}
